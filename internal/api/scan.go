@@ -269,7 +269,7 @@ func scanDisplayMessage(result, reason string) string {
 // (Python /embed per frame + cosine 1:N) → decideFrames → status → foto bukti
 // ke Garage (opsional) → simpan scan_events. class_id kosong = kelas otomatis
 // (kelas mahasiswa yang cocok). Face service gagal → 502 dan event tidak
-// dicatat. Kontrak: API.md, docs/devices.md §6.
+// dicatat. Kontrak: README bagian Kontrak API dan Perangkat §6.
 func (s *Server) receiveScan(w http.ResponseWriter, r *http.Request) {
 	if !s.validDeviceToken(r) {
 		writeError(w, http.StatusUnauthorized, "invalid_device", "Token perangkat tidak valid.")

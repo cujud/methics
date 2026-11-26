@@ -22,7 +22,8 @@ import (
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
-// Integrasi dengan face service Python (services/face/api.py).
+// Integrasi dengan Face Recognition Service Python
+// (source/deployment: https://git.algorithmics.web.id/hutao/methics-face).
 //
 // Face service bersifat stateless: ia mendeteksi wajah (SCRFD), memilih
 // wajah dengan confidence tertinggi, lalu mengekstrak embedding ArcFace 512-d
@@ -85,14 +86,14 @@ func (e *faceServiceError) Error() string {
 	return fmt.Sprintf("face service returned %d: %s", e.Status, e.Detail)
 }
 
-// embedResponse mengikuti skema EmbedResponse di services/face/api.py.
+// embedResponse mengikuti kontrak respons endpoint /embed.
 type embedResponse struct {
 	Embedding        []float64 `json:"embedding"`
 	Confidence       float64   `json:"confidence"`
 	ProcessingTimeMS float64   `json:"processing_time_ms"`
 }
 
-// registerResponse mengikuti skema RegisterResponse di services/face/api.py.
+// registerResponse mengikuti kontrak respons endpoint /register.
 // aligned_face_b64 tidak diminta (return_aligned=false) sehingga tidak dibaca.
 type registerResponse struct {
 	StudentID    string `json:"student_id"`

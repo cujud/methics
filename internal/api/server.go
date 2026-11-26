@@ -1262,7 +1262,7 @@ func (s *Server) health(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"status": "ok", "faceVerification": face, "imageStorage": s.imageStorageHealth(r.Context())})
 }
 
-// faceHealth membaca GET /health face service (services/face/api.py), yang
+// faceHealth membaca GET /health Face Recognition Service, yang
 // mengembalikan {"status": "ok"|"initializing", "model_loaded": bool,
 // "det_model": "...", "rec_model": "..."}.
 func (s *Server) faceHealth(ctx context.Context) map[string]any {

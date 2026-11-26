@@ -753,7 +753,7 @@ void framesSha256Hex(const Frames& f, char out[65]) {
 HttpResult postScan(const Frames& frames, const char* timestamp) {
   const char* liveness = LIVENESS_PASSED ? "true" : "false";
 
-  // Tanda tangan: 6 baris digabung "\n" (lihat API.md / docs/devices.md §4).
+  // Tanda tangan: 6 baris digabung "\n" (lihat README bagian Kontrak API dan Perangkat §6).
   // Baris terakhir = SHA-256 semua frame; CLASS_ID boleh kosong (kelas otomatis).
   char framesHash[65], signature[65];
   framesSha256Hex(frames, framesHash);
