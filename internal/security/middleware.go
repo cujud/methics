@@ -33,11 +33,6 @@ type loginWindow struct {
 	count   int
 }
 
-var loginAttempts = struct {
-	sync.Mutex
-	byIP map[string]loginWindow
-}{byIP: make(map[string]loginWindow)}
-
 // NewSessionManager membuat session store in-memory (cookie itbjh_session,
 // umur 8 jam, idle 30 menit). Restart server mengakhiri semua sesi.
 func NewSessionManager(secureCookie bool) *scs.SessionManager {
@@ -139,6 +134,17 @@ func SecurityHeaders(next http.Handler) http.Handler {
 // LoginRateLimit membatasi percobaan login per IP (in-memory) dalam satu
 // jendela waktu; kelebihan → 429 dengan Retry-After.
 func LoginRateLimit(maxAttempts int, window time.Duration) func(http.Handler) http.Handler {
+	return RateLimit(maxAttempts, window, "Terlalu banyak percobaan login. Coba lagi nanti.")
+}
+
+// RateLimit membatasi request per IP (in-memory) dalam satu jendela waktu.
+// Setiap pemanggilan memiliki penghitung sendiri; kelebihan → 429 dengan
+// Retry-After dan pesan message.
+func RateLimit(maxAttempts int, window time.Duration, message string) func(http.Handler) http.Handler {
+	attempts := &struct {
+		sync.Mutex
+		byIP map[string]loginWindow
+	}{byIP: make(map[string]loginWindow)}
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			ip, _, err := net.SplitHostPort(r.RemoteAddr)
@@ -146,25 +152,25 @@ func LoginRateLimit(maxAttempts int, window time.Duration) func(http.Handler) ht
 				ip = r.RemoteAddr
 			}
 			now := time.Now()
-			loginAttempts.Lock()
-			state := loginAttempts.byIP[ip]
+			attempts.Lock()
+			state := attempts.byIP[ip]
 			if state.started.IsZero() || now.Sub(state.started) >= window {
 				state = loginWindow{started: now}
 			}
 			state.count++
-			loginAttempts.byIP[ip] = state
+			attempts.byIP[ip] = state
 			blocked := state.count > maxAttempts
-			if len(loginAttempts.byIP) > 10000 {
-				for key, entry := range loginAttempts.byIP {
+			if len(attempts.byIP) > 10000 {
+				for key, entry := range attempts.byIP {
 					if now.Sub(entry.started) >= window {
-						delete(loginAttempts.byIP, key)
+						delete(attempts.byIP, key)
 					}
 				}
 			}
-			loginAttempts.Unlock()
+			attempts.Unlock()
 			if blocked {
 				w.Header().Set("Retry-After", strconv.Itoa(max(1, int(window.Seconds()))))
-				http.Error(w, "Terlalu banyak percobaan login. Coba lagi nanti.", http.StatusTooManyRequests)
+				http.Error(w, message, http.StatusTooManyRequests)
 				return
 			}
 			next.ServeHTTP(w, r)

@@ -1,0 +1,64 @@
+{{define "absen"}}<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="csrf-token" content="{{.CSRFToken}}">
+  <meta name="theme-color" content="#f7f8f6">
+  <meta name="robots" content="noindex">
+  <title>Absen QR | Institut Teknologi Bacharuddin Jusuf Habibie</title>
+  <link rel="icon" type="image/png" href="https://proxy-assets.etherthink.xyz/algorithmics/anthropic-dark.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/css/app.css">
+</head>
+<body class="absen-page">
+  <main class="absen-shell">
+    <header class="absen-brand">
+      <img src="https://proxy-assets.etherthink.xyz/etherthink/logo.png" alt="">
+      <span>Institut Teknologi Bacharuddin Jusuf Habibie</span>
+    </header>
+
+    {{if .Error}}
+    <section class="absen-card" aria-labelledby="absenTitle">
+      <p class="eyebrow">Absen QR</p>
+      <h1 id="absenTitle">QR tidak dapat dipakai</h1>
+      <p class="absen-notice error" role="alert">{{.Error}}</p>
+      <p class="absen-help">Arahkan kamera HP ke QR yang tampil di layar kelas, lalu buka tautannya. Kode QR berganti setiap 30 detik.</p>
+    </section>
+    {{else}}
+    <section class="absen-card" aria-labelledby="absenTitle">
+      <p class="eyebrow">Absen QR · {{.DeviceName}}</p>
+      <h1 id="absenTitle">Catat kehadiran</h1>
+      <p class="absen-help">Isi NIM, lalu ambil swafoto. Wajah dicocokkan dengan data wajah yang sudah direkam administrator.</p>
+
+      <form id="absenForm" class="absen-form" novalidate
+            data-expires="{{.ExpiresAt}}" data-frames="{{.MaxFrames}}">
+        <input type="hidden" name="d" value="{{.DeviceID}}">
+        <input type="hidden" name="w" value="{{.Window}}">
+        <input type="hidden" name="c" value="{{.Code}}">
+        <label class="field">NIM
+          <input id="absenNim" name="nim" required inputmode="numeric" pattern="[0-9]{9}" maxlength="9" autocomplete="off" placeholder="9 digit, mis. 241011001">
+        </label>
+
+        <div id="absenCamera" class="absen-camera">
+          <video id="absenVideo" playsinline muted autoplay></video>
+          <span class="absen-guide" aria-hidden="true"></span>
+        </div>
+
+        <p id="absenStatus" class="absen-notice" role="status" aria-live="polite">Membuka kamera…</p>
+        <button id="absenSubmit" class="button primary" type="submit" disabled>Ambil swafoto &amp; absen</button>
+        <p class="absen-expiry">Kode QR berlaku <span id="absenExpiry">-</span> lagi</p>
+      </form>
+
+      <div id="absenResult" class="absen-result" hidden></div>
+      <noscript><p class="absen-notice error">Aktifkan JavaScript untuk memakai kamera.</p></noscript>
+    </section>
+    {{end}}
+
+    <p class="absen-foot">Foto dipakai hanya untuk verifikasi kehadiran dan disimpan sesuai kebijakan retensi kampus.</p>
+  </main>
+  <script src="/static/js/absen.js" defer></script>
+</body>
+</html>{{end}}

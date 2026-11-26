@@ -463,3 +463,177 @@ h1 {
     text-align: center;
     line-height: 1.6;
 }
+/* ---- Absen QR mahasiswa (views/absen.html) ---- */
+.absen-page {
+    min-height: 100vh;
+    min-height: 100svh;
+    margin: 0;
+    padding: 0;
+    background: var(--paper);
+    color: var(--ink);
+}
+
+.absen-shell {
+    display: grid;
+    gap: 16px;
+    width: min(100%, 460px);
+    margin: 0 auto;
+    padding: 20px 16px 28px;
+}
+
+.absen-brand {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font: 600 13px/1.35 "Space Grotesk", sans-serif;
+}
+
+.absen-brand img {
+    width: 34px;
+    height: 34px;
+    object-fit: contain;
+}
+
+.absen-card {
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    background: var(--surface);
+    padding: 22px 18px;
+    box-shadow: var(--shadow);
+}
+
+.absen-card h1 {
+    margin: 0 0 6px;
+    font: 600 24px/1.2 "Space Grotesk", sans-serif;
+}
+
+.absen-help,
+.absen-foot,
+.absen-expiry {
+    margin: 0;
+    color: var(--muted);
+    font-size: 12px;
+    line-height: 1.55;
+}
+
+.absen-foot {
+    text-align: center;
+}
+
+.absen-expiry {
+    text-align: center;
+}
+
+.absen-expiry span {
+    color: var(--ink);
+    font-variant-numeric: tabular-nums;
+    font-weight: 600;
+}
+
+.absen-form {
+    display: grid;
+    gap: 14px;
+    margin-top: 18px;
+}
+
+.absen-form .field input {
+    height: 44px;
+    font-size: 16px; /* >= 16px mencegah zoom otomatis di iOS */
+    letter-spacing: .04em;
+}
+
+.absen-form .button {
+    width: 100%;
+    min-height: 46px;
+    font-size: 14px;
+}
+
+.absen-form .button:disabled {
+    opacity: .55;
+    cursor: not-allowed;
+}
+
+.absen-camera {
+    position: relative;
+    overflow: hidden;
+    border-radius: 12px;
+    background: #18211f;
+    aspect-ratio: 1 / 1;
+    max-height: 46svh;
+}
+
+.absen-camera video {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    transform: scaleX(-1); /* pratinjau seperti cermin; foto yang dikirim tidak dibalik */
+}
+
+.absen-guide {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    height: 78%;
+    aspect-ratio: 3 / 4;
+    border: 2px dashed rgb(255 255 255 / 70%);
+    border-radius: 50%;
+    transform: translate(-50%, -52%);
+    pointer-events: none;
+}
+
+.absen-camera.capturing .absen-guide {
+    border-style: solid;
+    border-color: #7fd3ad;
+}
+
+.absen-notice {
+    margin: 0;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: #f9faf9;
+    padding: 10px 12px;
+    color: #4f5a55;
+    font-size: 13px;
+    line-height: 1.5;
+}
+
+.absen-notice.error {
+    border-color: #f1c9c5;
+    background: var(--red-soft);
+    color: #a33e39;
+}
+
+.absen-card > .absen-notice.error {
+    margin: 14px 0;
+}
+
+.absen-result {
+    display: grid;
+    gap: 6px;
+    margin-top: 18px;
+    border-radius: 12px;
+    padding: 20px 18px;
+    outline: none;
+}
+
+.absen-result p {
+    margin: 0;
+}
+
+.absen-result.success { background: var(--green-soft); color: #1d5f46; }
+.absen-result.warning { background: var(--orange-soft); color: #8a4a22; }
+.absen-result.error { background: var(--red-soft); color: #a33e39; }
+
+.absen-result-title {
+    font: 600 26px/1.2 "Space Grotesk", sans-serif;
+}
+
+.absen-result-message {
+    font-size: 14px;
+    line-height: 1.5;
+}
+
+.absen-result-meta {
+    font-size: 12px;
+    opacity: .85;
+}

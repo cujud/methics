@@ -77,6 +77,10 @@ func main() {
 	if err != nil {
 		log.Fatalf("load fragment templates: %v", err)
 	}
+	absen, err := controller.NewAbsen(apiServer, viewDir)
+	if err != nil {
+		log.Fatalf("load absen template: %v", err)
+	}
 
 	protected := http.NewServeMux()
 	protected.HandleFunc("GET /login", authController.LoginPage)
@@ -88,6 +92,11 @@ func main() {
 	protected.Handle("GET /laporan", security.RequireSession(sessions, database, false)(http.HandlerFunc(web.Reports)))
 	protected.Handle("GET /logs", security.RequireSession(sessions, database, false)(http.HandlerFunc(web.Logs)))
 	protected.Handle("GET /akses", security.RequireSession(sessions, database, false)(security.RequireRole("administrator")(http.HandlerFunc(web.Access))))
+	// Absen QR mahasiswa: publik (tanpa sesi), tetap di belakang CSRF.
+	// Batas per IP longgar karena satu kelas sering berbagi IP NAT kampus;
+	// batas per NIM ada di api.QRCheckIn.
+	protected.Handle("GET /absen", security.RateLimit(240, time.Minute, "Terlalu banyak permintaan. Coba lagi sebentar.")(http.HandlerFunc(absen.Page)))
+	protected.Handle("POST /absen", security.RateLimit(120, time.Minute, "Terlalu banyak percobaan absen. Coba lagi sebentar.")(http.HandlerFunc(absen.Submit)))
 	protected.Handle("/static/", apiServer.StaticHandler(staticDir))
 	protected.Handle("/api/v1/", security.RequireSession(sessions, database, true)(apiServer.StaffHandler()))
 	protected.Handle("/partials/", security.RequireSession(sessions, database, true)(partials.Handler()))

@@ -23,6 +23,7 @@ Untuk orientasi cepat AI/kontributor berikutnya, mulai dari
 | Firmware perangkat absensi ESP32 + ESP32-CAM (UART) (`devices/esp32_scanner`, `devices/esp32cam_uart`) | tersedia; commissioning perangkat keras wajib sebelum pemasangan |
 | Firmware tambahan | alat commissioning perangkat, tidak termasuk runtime server |
 | Face Recognition Service Python (repository terpisah, SCRFD + ArcFace) | terhubung ke Go untuk enrollment & scan ([repository layanan](https://git.algorithmics.web.id/hutao/methics-face), [integrasi Face Recognition Service](#integrasi-face-recognition-service)) |
+| Absen QR: layar QR dinamis (`devices/esp32_qr_display`) + halaman `/absen` di HP mahasiswa dengan verifikasi swafoto | tersedia; uji di HP dan commissioning layar sebelum dipakai ([Absen QR](#absen-qr)) |
 | Penyimpanan foto wajah di Garage (S3) + retensi otomatis | ada, opsional (`S3_*`); tautan foto di halaman Log |
 | Operasi aplikasi | production-only |
 
@@ -35,6 +36,7 @@ Untuk orientasi cepat AI/kontributor berikutnya, mulai dari
 - [Panduan kode](#panduan-kode)
 - [Database MongoDB](#database)
 - [Firmware & perangkat](#perangkat-firmware)
+- [Absen QR](#absen-qr)
 - [Integrasi Face Recognition Service](#integrasi-face-recognition-service)
 - [Spesifikasi kebutuhan](#spesifikasi-kebutuhan)
 - [Standar penulisan dokumentasi](#standar-dokumentasi)
@@ -57,6 +59,7 @@ internal/store/           koneksi MongoDB, index, seed, akun staf
 views/                    template html/template (layouts, pages, partials, fragments)
 static/                   CSS, JS, htmx & Lucide yang di-vendor lokal
 devices/                  firmware Arduino: esp32_scanner (perangkat absensi), esp32cam_uart (kamera),
+                          esp32_qr_display (layar QR absensi),
                           firmware commissioning perangkat
 docs/diagram.excalidraw   diagram arsitektur
 ```
@@ -119,6 +122,7 @@ reverse proxy dan infrastruktur deployment.
 | `/logs` | log pemindaian seluruh waktu (200 terbaru) dengan filter status, kelas, pencarian, dan tautan foto capture | staf |
 | `/akses` | buat & hapus akun dosen, daftar akun staf, matriks role | administrator |
 | `/login` | login staf | publik |
+| `/absen?d=&w=&c=` | absen QR mahasiswa: isi NIM + swafoto (dibuka dari QR di layar kelas) | publik, kode QR wajib valid |
 | `/eggs` | halaman putih; ketuk gambar telur untuk memutar musik | publik |
 
 Di halaman Mahasiswa, administrator diminta memberi izin kamera saat menekan
@@ -209,6 +213,82 @@ Wi-Fi dan `DEVICE_TOKEN` untuk ESP32 disimpan di
 > **Kredensial perangkat sudah ter-commit.** Versi lama sketch ESP8266 menulis
 > password Wi-Fi dan `DEVICE_TOKEN` langsung di kode dan sudah masuk riwayat
 > Git. Ganti token dan password itu ([panduan perangkat](#perangkat-firmware) §4).
+
+## Absen QR
+
+Alternatif absensi tanpa kamera di perangkat: **layar QR** di kelas
+(`devices/esp32_qr_display`: ESP32 + TFT ILI9341 + HC-SR04 + buzzer)
+menampilkan QR yang berganti tiap 30 detik. Mahasiswa memindainya dengan HP,
+mengisi NIM, lalu mengambil swafoto. Go memverifikasi kode QR dan memastikan
+wajah cocok dengan pemilik NIM.
+
+### Alur
+
+1. Layar menghitung `window = floor(unix / 30)` dari jam NTP dan
+   `code = hex(HMAC-SHA256(DEVICE_TOKEN, "qr\n" + device_id + "\n" + window))[:16]`,
+   lalu menampilkan `{BASE_URL}/absen?d={device_id}&w={window}&c={code}`.
+   Algoritmanya sama dengan `api.QRCode` (`internal/api/qr.go`).
+2. `GET /absen` memeriksa kode (`api.VerifyQR`): tanda tangan benar, perangkat
+   terdaftar di `devices`, dan window paling lama 3 window sebelum window saat
+   ini (±2 menit untuk mengisi form) atau 1 window ke depan (selisih jam).
+   Kode tidak valid → halaman galat; kode valid → form NIM + kamera depan.
+3. `static/js/absen.js` mengambil 3 swafoto berjeda ±0,45 detik dan mengirim
+   `POST /absen` (multipart: `d`, `w`, `c`, `nim`, `image`×1–3, header
+   `X-CSRF-Token`). Kode QR diperiksa ulang.
+4. `api.QRCheckIn`: NIM 9 digit → batas 6 percobaan/10 menit per NIM →
+   mahasiswa & template wajah → `matchFrames` + `decideFrames` (1:N, sama
+   dengan scan perangkat) → `qrDecision`:
+
+| Kondisi | Status | `result` | Dicatat |
+| --- | --- | --- | --- |
+| Wajah cocok dengan pemilik NIM di ≥ `SCAN_MIN_MATCH_FRAMES` foto | Hadir | `hadir` | ya (sekali per hari; berikutnya `sudah_hadir`) |
+| Cocok dengan pemilik NIM di kurang dari itu | Perlu ditinjau | `perlu_ditinjau` | ya |
+| Cocok dengan mahasiswa **lain**, atau tidak cocok siapa pun | Ditolak | `wajah_tidak_sesuai` | ya (bukti titip absen) |
+| Tidak ada wajah di semua foto | — | 422 `no_face` | tidak; mahasiswa mengulang |
+
+Event disimpan di `scan_events` dengan `source: "qr"`, `qr_window`,
+`device_id` layar, dan `class_id` = kelas mahasiswa. Foto bukti ke Garage bila
+S3 aktif (retensi sama dengan scan perangkat). Halaman Log menandai event ini
+dengan "· QR". NIM yang tidak terdaftar dan mahasiswa tanpa template mendapat
+pesan yang sama agar halaman publik tidak membocorkan NIM terdaftar.
+
+### Kode galat `POST /absen`
+
+| HTTP | `error.code` | Arti |
+| --- | --- | --- |
+| 400 | `invalid_qr` | kode QR salah/kedaluwarsa atau perangkat tidak terdaftar |
+| 400 | `invalid_nim`, `invalid_image`, `invalid_request` | input salah |
+| 403 | (teks) | token CSRF tidak cocok; muat ulang dari QR |
+| 422 | `not_registered`, `no_face` | NIM/template belum ada, atau wajah tidak terlihat |
+| 429 | `too_many_attempts` / (teks) | batas per NIM, atau batas per IP (240 GET & 120 POST/menit) |
+| 502 | `verification_unavailable` | face service gagal; tidak ada yang dicatat |
+
+### Pemasangan layar QR
+
+1. Daftarkan ID layar di `devices` (seed membuat `ESP32-QR-A1`).
+2. Salin `devices/esp32_qr_display/secrets.example.h` menjadi `secrets.h`,
+   isi Wi-Fi dan `DEVICE_TOKEN` (sama dengan `.env`), dan sebaiknya
+   `SERVER_ROOT_CA`.
+3. Sesuaikan `BASE_URL`, `DEVICE_ID`, pin, dan `ROT` di sketch, lalu upload
+   (board ESP32, library TFT_eSPI yang sudah dikonfigurasi untuk ILI9341).
+4. Pastikan Serial Monitor menampilkan `[NTP] tersinkron` dan `[PING] HTTP 200`,
+   lalu pindai QR dengan HP dan selesaikan satu absen uji.
+
+Halaman memerlukan HTTPS dengan sertifikat valid karena browser hanya membuka
+kamera di secure context.
+
+### Batasan
+
+- **Bukan anti-spoof.** Kode berganti tiap 30 detik, tetapi tautan yang
+  diteruskan masih bisa dipakai selama ±2 menit oleh pemilik wajah dari luar
+  kelas. Foto/video wajah juga masih bisa lolos.
+- Kode QR memakai `DEVICE_TOKEN` global yang sama dengan perangkat scan;
+  bocornya token memungkinkan membuat QR palsu. Lihat risiko token per
+  perangkat di [arsitektur](#arsitektur) §10.
+- Batas percobaan per NIM dan per IP disimpan di memori proses (satu instance).
+- Sketch lama `devices/tes_esp32_qrCode` menulis password Wi-Fi dan sebuah
+  token langsung di kode dan sudah masuk riwayat Git; ganti password Wi-Fi
+  tersebut dan rotasi `DEVICE_TOKEN` bila nilainya sama.
 
 ## Face service
 
@@ -506,6 +586,8 @@ sedangkan kontrak Go-nya dijelaskan di [integrasi Face Recognition Service](#int
 | API staf | `GET /api/v1/images/{key...}` | session staf (dosen: hanya kelasnya) | gambar |
 | Perangkat | `POST /api/v1/scans` | bearer `DEVICE_TOKEN` + HMAC + timestamp | JSON |
 | Perangkat | `GET\|POST /api/v1/devices/ping` | bearer `DEVICE_TOKEN` | JSON |
+| Absen QR | `GET /absen?d=&w=&c=` | kode QR (HMAC `DEVICE_TOKEN`, ±2 menit) | HTML |
+| Absen QR | `POST /absen` | kode QR + CSRF + batas per IP & per NIM | JSON ([Absen QR](#absen-qr)) |
 | Publik | `GET /api/v1/health` | — | JSON |
 | Aset | `GET /static/*` | — | file |
 
@@ -1311,7 +1393,9 @@ Catatan deployment dan risiko yang masih perlu ditangani (lihat juga
 11. **Commissioning kamera Wi-Fi dan kamera stream** memakai HTTP tanpa TLS
     atau autentikasi penuh; gunakan hanya pada jaringan commissioning
     terisolasi, bukan jaringan produksi.
-12. **Sisa mahasiswa contoh dari seed lama** (`IK24001`–`IK24005`) tidak
+12. **Absen QR** dapat diteruskan dalam masa berlakunya (±2 menit) dan memakai
+    `DEVICE_TOKEN` global sebagai kunci HMAC; lihat [Absen QR](#absen-qr) §Batasan.
+13. **Sisa mahasiswa contoh dari seed lama** (`IK24001`–`IK24005`) tidak
     dihapus otomatis; seed kini hanya kelas dan perangkat (lihat
     [panduan database](#database)).
 
@@ -1635,7 +1719,7 @@ lama** tetap sama meski internalnya bertipe.
 ##### `internal/store/`
 
 - `database.go`: `Open` (connect + ping 8 detik) → `migrate` (membuat index,
-  idempoten) → `seed` (3 kelas dan 2 perangkat; idempoten via upsert
+  idempoten) → `seed` (3 kelas dan 3 perangkat; idempoten via upsert
   `$setOnInsert`; tombstone `deleted_classes` mencegah kelas seed yang sudah
   dihapus muncul lagi; mahasiswa tidak di-seed). `Collection(name)` adalah
   helper akses koleksi.
@@ -2102,7 +2186,7 @@ data itu akan salah masuk/keluar dari rentang "hari ini".
 | --- | --- |
 | Kelas | `IK24-A` Ilmu Komputer A, `IK24-B` Ilmu Komputer B, `IK24-C` Ilmu Komputer C |
 | Mahasiswa | **tidak ada** — didaftarkan manual (NIM 9 digit, mis. `241011001`) |
-| Perangkat | `ESP32-GED-A1` ESP32 Gedung A, `ESP32-GED-B1` ESP32 Gedung B |
+| Perangkat | `ESP32-GED-A1` ESP32 Gedung A, `ESP32-GED-B1` ESP32 Gedung B, `ESP32-QR-A1` Layar QR Gedung A |
 | Akun staf | **tidak ada** — dibuat dari `BOOTSTRAP_*` (lihat `panduan utama`) |
 | Template wajah / scan | **tidak ada** |
 

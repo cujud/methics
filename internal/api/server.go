@@ -58,6 +58,8 @@ type Server struct {
 	config Config
 	client *http.Client
 	images ImageStore
+	// qrAttempts membatasi percobaan absen QR per NIM (lihat qr.go).
+	qrAttempts qrLimiter
 }
 
 type principal struct {
@@ -89,6 +91,8 @@ type ScanEvent struct {
 	Confidence   float64
 	ReviewReason string
 	DeviceID     string
+	// Source: "qr" untuk absen lewat QR di HP mahasiswa; kosong = scan perangkat.
+	Source string
 	// ImageURL menunjuk foto scan di GET /api/v1/images/...; kosong bila
 	// foto tidak disimpan atau sudah melewati masa retensi.
 	ImageURL string
@@ -535,6 +539,7 @@ func (s *Server) fetchScanEvents(ctx context.Context, filter bson.M, limit int64
 		Confidence   float64 `bson:"confidence"`
 		ReviewReason string  `bson:"review_reason"`
 		ImageKey     string  `bson:"image_key"`
+		Source       string  `bson:"source"`
 	}
 	var docs []rawScanDoc
 	if err := cur.All(ctx, &docs); err != nil {
@@ -614,6 +619,7 @@ func (s *Server) fetchScanEvents(ctx context.Context, filter bson.M, limit int64
 			Confidence:   doc.Confidence,
 			ReviewReason: doc.ReviewReason,
 			DeviceID:     doc.DeviceID,
+			Source:       doc.Source,
 			ImageURL:     ImageURL(doc.ImageKey),
 		})
 	}
@@ -662,6 +668,7 @@ func scanEventsToMaps(events []ScanEvent) []map[string]any {
 			"confidence":   event.Confidence,
 			"reviewReason": event.ReviewReason,
 			"deviceId":     event.DeviceID,
+			"source":       event.Source,
 			"imageUrl":     event.ImageURL,
 		})
 	}

@@ -142,7 +142,7 @@ func (db *Database) migrate(ctx context.Context) error {
 	return nil
 }
 
-// seed meng-upsert data dasar (3 kelas dan 2 perangkat) dengan $setOnInsert:
+// seed meng-upsert data dasar (3 kelas dan 3 perangkat) dengan $setOnInsert:
 // dokumen yang sudah ada tidak ditimpa. Kelas yang dihapus ditandai agar tidak
 // dibuat kembali pada startup berikutnya.
 // Mahasiswa TIDAK di-seed; semuanya didaftarkan manual lewat dashboard atau
@@ -174,6 +174,7 @@ func (db *Database) seed(ctx context.Context) error {
 	devices := []struct{ ID, Name string }{
 		{"ESP32-GED-A1", "ESP32 Gedung A"},
 		{"ESP32-GED-B1", "ESP32 Gedung B"},
+		{"ESP32-QR-A1", "Layar QR Gedung A"},
 	}
 	for _, device := range devices {
 		_, err := db.Collection("devices").UpdateOne(ctx,

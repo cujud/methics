@@ -35,7 +35,7 @@
         <td>{{if .ScannedAt}}{{.ScannedAt}}{{else}}-{{end}}</td>
         <td><span class="status {{statusClass .Status}}">{{if .Status}}{{.Status}}{{else}}-{{end}}</span></td>
         <td>{{confidence .Confidence}}</td>
-        <td>{{if .DeviceID}}{{.DeviceID}}{{else}}-{{end}}</td>
+        <td>{{if .DeviceID}}{{.DeviceID}}{{else}}-{{end}}{{if eq .Source "qr"}} · QR{{end}}</td>
         <td>{{if .ReviewReason}}{{.ReviewReason}}{{else}}-{{end}}</td>
         <td>{{if .ImageURL}}<a href="{{.ImageURL}}" target="_blank" rel="noopener">Lihat</a>{{else}}-{{end}}</td>
       </tr>
