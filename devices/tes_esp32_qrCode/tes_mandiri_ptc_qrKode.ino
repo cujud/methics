@@ -6,15 +6,31 @@
       (BEEP_COUNT kali bip pendek) sehingga QR terlihat.
     - Layar mati lagi ON_TIME_MS setelah objek terakhir terdeteksi.
   QR memakai library bawaan core ESP32 (esp_qrcode), tanpa library tambahan.
+
+  Tambahan: ESP32 tersambung WiFi dan mengirim event ke web Anda (HTTP POST, JSON)
+  dengan DEVICE TOKEN di header. Pengiriman dilakukan di task terpisah sehingga
+  tidak mengganggu sensor dan buzzer.
 */
 #include <SPI.h>
 #include <TFT_eSPI.h>
 #include "qrcode.h"          // bawaan core ESP32 (esp_qrcode)
+#include <WiFi.h>
+#include <HTTPClient.h>
+#include <WiFiClientSecure.h>
 
 #define ROT 2
 
+// ---- WiFi & koneksi ke web (ISI SESUAI KEBUTUHAN) ----
+#define WIFI_SSID     "realmi 13"        // harus WiFi 2.4 GHz
+#define WIFI_PASS     "28012011"
+#define API_URL       "https://webanda.com/api/device/event"   // endpoint di web Anda
+#define DEVICE_TOKEN  "HPYTy93zrOCwWjE2QakbxX0vi7gBnVuels8dFNZG"
+#define AUTH_HEADER   "Authorization"    // nama header; ganti mis. "X-Device-Token" bila web Anda memakainya
+#define AUTH_PREFIX   "Bearer "          // awalan nilai header; kosongkan ("") bila token dikirim apa adanya
+#define HTTP_TIMEOUT_MS 6000
+
 // ---- QR ----
-#define QR_TEXT "https://contoh.com/absen"   // isi QR, ganti sesuai kebutuhan
+#define QR_TEXT "https://dash.algorithmics.web.id"   // isi QR, ganti sesuai kebutuhan
 
 // ---- Sensor ultrasonic ----
 #define TRIG_PIN 26
@@ -123,6 +139,72 @@ void drawQR(const char* text) {
   esp_qrcode_generate(&cfg, text);
 }
 
+// ---------------------------------------------------------------------------
+// Koneksi ke web (dijalankan di task terpisah)
+// ---------------------------------------------------------------------------
+volatile bool sendPending = false;
+char pendingEvent[24];
+volatile float pendingDist = 0;
+
+bool wifiEnsure(unsigned long timeoutMs) {
+  if (WiFi.status() == WL_CONNECTED) return true;
+  WiFi.disconnect();
+  WiFi.begin(WIFI_SSID, WIFI_PASS);
+  unsigned long t = millis();
+  while (WiFi.status() != WL_CONNECTED && millis() - t < timeoutMs) delay(250);
+  return WiFi.status() == WL_CONNECTED;
+}
+
+// Kirim satu event ke web. true bila server membalas 2xx.
+bool sendEvent(const char* eventName, float distCm) {
+  if (!wifiEnsure(10000)) {
+    Serial.println("WiFi gagal tersambung");
+    return false;
+  }
+  String url = API_URL;
+  String body = String("{\"device_id\":\"") + WiFi.macAddress() +
+                "\",\"event\":\"" + eventName +
+                "\",\"distance_cm\":" + String(distCm, 1) + "}";
+
+  HTTPClient http;
+  WiFiClient plain;
+  WiFiClientSecure secure;
+  if (url.startsWith("https")) {
+    secure.setInsecure();               // tanpa verifikasi sertifikat (mudah); lihat catatan keamanan
+    http.begin(secure, url);
+  } else {
+    http.begin(plain, url);
+  }
+  http.setTimeout(HTTP_TIMEOUT_MS);
+  http.addHeader("Content-Type", "application/json");
+  http.addHeader(AUTH_HEADER, String(AUTH_PREFIX) + DEVICE_TOKEN);
+
+  int code = http.POST(body);
+  Serial.printf("POST %s -> HTTP %d\n", eventName, code);
+  if (code > 0) Serial.println(http.getString());   // balasan server, untuk debugging
+  http.end();
+  return code >= 200 && code < 300;
+}
+
+// Dipanggil dari loop(): jadwalkan pengiriman (diabaikan bila masih ada yang berjalan)
+void queueEvent(const char* eventName, float distCm) {
+  if (sendPending) return;
+  strncpy(pendingEvent, eventName, sizeof(pendingEvent) - 1);
+  pendingEvent[sizeof(pendingEvent) - 1] = 0;
+  pendingDist = distCm;
+  sendPending = true;
+}
+
+void netTask(void*) {
+  for (;;) {
+    if (sendPending) {
+      sendEvent(pendingEvent, pendingDist);
+      sendPending = false;
+    }
+    vTaskDelay(50 / portTICK_PERIOD_MS);
+  }
+}
+
 // cm, atau -1 jika tidak ada pantulan
 float readDistanceCm() {
   digitalWrite(TRIG_PIN, LOW);
@@ -147,6 +229,10 @@ void setup() {
   tft.setRotation(ROT);
   setBacklight(false);
   drawQR(QR_TEXT);
+
+  WiFi.mode(WIFI_STA);
+  WiFi.begin(WIFI_SSID, WIFI_PASS);                 // sambung di latar belakang
+  xTaskCreatePinnedToCore(netTask, "net", 8192, NULL, 1, NULL, 0);
 }
 
 void loop() {
@@ -168,6 +254,7 @@ void loop() {
       if (!screenOn) {
         setBacklight(true);
         startBeep(now);
+        queueEvent("object_detected", dist);   // kirim ke web
 #if DEBUG_SERIAL
         Serial.println("Objek terdeteksi -> layar ON + buzzer");
 #endif
